@@ -1,20 +1,12 @@
-## YOLOV4：You Only Look Once目标检测模型在Keras当中的实现
+## YOLOV4-Tiny：You Only Look Once-Tiny目标检测模型在Keras当中的实现
 ---
 
 ### 目录
 1. [所需环境 Environment](#所需环境)
 2. [注意事项 Attention](#注意事项)
-3. [小技巧的设置 TricksSet](#小技巧的设置)
-4. [文件下载 Download](#文件下载))
-5. [训练步骤 How2train](#训练步骤)
-6. [参考资料 Reference](#Reference)
-
-### YOLOV4的改进
-- [x] 主干特征提取网络：DarkNet53 => CSPDarkNet53
-- [x] 特征金字塔：SPP，PAN
-- [x] 训练用到的小技巧：Mosaic数据增强、Label Smoothing平滑、CIOU、学习率余弦退火衰减
-- [x] 激活函数：使用Mish激活函数
-- [ ] ……balabla
+3. [文件下载 Download](#文件下载))
+4. [训练步骤 How2train](#训练步骤)
+5. [参考资料 Reference](#Reference)
 
 ### 所需环境
 tensorflow-gpu==1.13.1  
@@ -30,10 +22,8 @@ keras==2.1.5
 3、label_smoothing可用于控制是否Label Smoothing平滑。
 
 ### 文件下载
-训练所需的yolo4_weights.h5可在百度网盘中下载。  
-链接: https://pan.baidu.com/s/1FF79PmRc8BzZk8M_ARdMmw 提取码: dc2j  
-yolo4_weights.h5是coco数据集的权重。  
-yolo4_voc_weights.h5是voc数据集的权重。
+训练所需的yolov4_tiny_voc.h5可在百度网盘中下载。   
+链接: https://pan.baidu.com/s/1EAHJ2P-DebBaKGDPqJ-2IA 提取码: xfxh    
 
 ### 训练步骤
 1、本文使用VOC格式进行训练。  
