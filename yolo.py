@@ -10,6 +10,10 @@ from PIL import Image, ImageFont, ImageDraw
 from nets.yolo4_tiny import yolo_body,yolo_eval
 from utils.utils import letterbox_image
 class YOLO(object):
+    #--------------------------------------------#
+    #   使用自己训练好的模型预测需要修改2个参数
+    #   model_path和classes_path都需要修改！
+    #--------------------------------------------#
     _defaults = {
         "model_path": 'model_data/yolov4_tiny_voc.h5',
         "anchors_path": 'model_data/yolo_anchors.txt',
