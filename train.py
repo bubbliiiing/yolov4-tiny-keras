@@ -163,10 +163,15 @@ if __name__ == "__main__":
     h, w = input_shape
 
     # 创建yolo模型
-    print('Create YOLOv3 model with {} anchors and {} classes.'.format(num_anchors, num_classes))
+    print('Create YOLOv4-Tiny model with {} anchors and {} classes.'.format(num_anchors, num_classes))
     model_body = yolo_body(image_input, num_anchors//2, num_classes)
     
     model_body.summary()
+    #------------------------------------------------------#
+    #   权值文件请看README，百度网盘下载
+    #   训练自己的数据集时提示维度不匹配正常
+    #   预测的东西都不一样了自然维度不匹配
+    #------------------------------------------------------#
     # 载入预训练权重
     print('Load weights {}.'.format(weights_path))
     model_body.load_weights(weights_path, by_name=True, skip_mismatch=True)
@@ -199,6 +204,13 @@ if __name__ == "__main__":
     num_val = int(len(lines)*val_split)
     num_train = len(lines) - num_val
     
+    #------------------------------------------------------#
+    #   主干特征提取网络特征通用，冻结训练可以加快训练速度
+    #   也可以在训练初期防止权值被破坏。
+    #   Init_Epoch为起始世代
+    #   Freeze_Epoch为冻结训练的世代
+    #   Epoch总训练世代
+    #------------------------------------------------------#
     freeze_layers = 60
     for i in range(freeze_layers): model_body.layers[i].trainable = False
     print('Freeze the first {} layers of total {} layers.'.format(freeze_layers, len(model_body.layers)))
