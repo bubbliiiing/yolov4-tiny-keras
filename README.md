@@ -40,7 +40,7 @@ a、按照训练步骤训练。
 b、在yolo.py文件里面，在如下部分修改model_path和classes_path使其对应训练好的文件；**model_path对应logs文件夹下面的权值文件，classes_path是model_path对应分的类**。  
 ```python
 _defaults = {
-    "model_path": 'model_data/yolo4_weight.h5',
+    "model_path": 'model_data/yolov4_tiny_voc.h5',
     "anchors_path": 'model_data/yolo_anchors.txt',
     "classes_path": 'model_data/coco_classes.txt,
     "score" : 0.5,
