@@ -9,15 +9,12 @@ from keras.layers import Input
 from PIL import Image, ImageFont, ImageDraw
 from nets.yolo4_tiny import yolo_body,yolo_eval
 from utils.utils import letterbox_image
+import collections
 class YOLO(object):
-    #--------------------------------------------#
-    #   使用自己训练好的模型预测需要修改2个参数
-    #   model_path和classes_path都需要修改！
-    #--------------------------------------------#
     _defaults = {
-        "model_path": 'model_data/yolov4_tiny_voc.h5',
+        "model_path": 'model_data/yolov4_tiny_weights_coco.h5',
         "anchors_path": 'model_data/yolo_anchors.txt',
-        "classes_path": 'model_data/voc_classes.txt',
+        "classes_path": 'model_data/coco_classes.txt',
         "score" : 0.5,
         "iou" : 0.3,
         # 显存比较小可以使用416x416
@@ -135,7 +132,6 @@ class YOLO(object):
                     size=np.floor(3e-2 * image.size[1] + 0.5).astype('int32'))
         thickness = (image.size[0] + image.size[1]) // 300
 
-        small_pic=[]
         for i, c in list(enumerate(out_classes)):
             predicted_class = self.class_names[c]
             box = out_boxes[i]
