@@ -142,7 +142,7 @@ if __name__ == "__main__":
     classes_path = 'model_data/voc_classes.txt'    
     anchors_path = 'model_data/yolo_anchors.txt'
     # 预训练模型的位置
-    weights_path = 'model_data/yolov4_tiny_voc.h5'
+    weights_path = 'model_data/yolov4_tiny_weights_coco.h5'
     # 获得classes和anchor
     class_names = get_classes(classes_path)
     anchors = get_anchors(anchors_path)
@@ -222,7 +222,7 @@ if __name__ == "__main__":
     # 调整非主干模型first
     if True:
         Init_epoch = 0
-        Freeze_epoch = 25
+        Freeze_epoch = 50
         # batch_size大小，每次喂入多少数据
         batch_size = 16
         # 最大学习率
@@ -261,8 +261,8 @@ if __name__ == "__main__":
 
     # 解冻后训练
     if True:
-        Freeze_epoch = 25
-        Epoch = 50
+        Freeze_epoch = 50
+        Epoch = 100
         # batch_size大小，每次喂入多少数据
         batch_size = 16
 
