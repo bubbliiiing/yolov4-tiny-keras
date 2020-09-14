@@ -155,7 +155,7 @@ if __name__ == "__main__":
     # 显存比较小可以使用416x416
     # 现存比较大可以使用608x608
     input_shape = (416,416)
-    mosaic = True
+    mosaic = False
     Cosine_scheduler = False
     label_smoothing = 0
 
