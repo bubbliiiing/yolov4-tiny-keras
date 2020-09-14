@@ -2,20 +2,27 @@
 ---
 
 ### 目录
-1. [所需环境 Environment](#所需环境)
-2. [注意事项 Attention](#注意事项)
-3. [小技巧的设置 TricksSet](#小技巧的设置)
-4. [文件下载 Download](#文件下载)
-5. [预测步骤 How2predict](#预测步骤)
-6. [训练步骤 How2train](#训练步骤)
-7. [参考资料 Reference](#Reference)
+1. [性能情况 Performance](#性能情况)
+2. [所需环境 Environment](#所需环境)
+3. [注意事项 Attention](#注意事项)
+4. [小技巧的设置 TricksSet](#小技巧的设置)
+5. [文件下载 Download](#文件下载)
+6. [预测步骤 How2predict](#预测步骤)
+7. [训练步骤 How2train](#训练步骤)
+8. [参考资料 Reference](#Reference)
+
+### 性能情况
+| 训练数据集 | 权值文件名称 | 测试数据集 | 输入图片大小 | mAP 0.5:0.95 | mAP 0.5 |
+| :-----: | :-----: | :------: | :------: | :------: | :-----: |
+| VOC07+12+COCO | [yolov4_tiny_weights_voc.h5](https://github.com/bubbliiiing/yolov4-tiny-keras/releases/download/v1.1/yolov4_tiny_weights_voc.h5) | VOC-Test07 | 416x416 | - | 74.95
+| COCO-Train2017 | [yolov4_tiny_weights_coco.h5](https://github.com/bubbliiiing/yolov4-tiny-keras/releases/download/v1.1/yolov4_tiny_weights_coco.h5) | COCO-Val2017 | 416x416 | 19.1 | 38.4
 
 ### 所需环境
 tensorflow-gpu==1.13.1  
 keras==2.1.5  
 
 ### 注意事项
-代码中的yolov4_tiny_voc.h5是基于416x416的图片训练的。
+代码中的yolov4_tiny_weights_coco.h5和yolov4_tiny_weights_voc.h5是基于416x416的图片训练的。
 
 ### 小技巧的设置
 在train.py文件下：   
@@ -24,8 +31,8 @@ keras==2.1.5
 3、label_smoothing可用于控制是否Label Smoothing平滑。
 
 ### 文件下载
-训练所需的yolov4_tiny_voc.h5可在百度网盘中下载。   
-链接: https://pan.baidu.com/s/1EAHJ2P-DebBaKGDPqJ-2IA 提取码: xfxh    
+训练所需的yolov4_tiny_weights_coco.h5和yolov4_tiny_weights_voc.h5可在百度网盘中下载。   
+链接: https://pan.baidu.com/s/1OZ5gDZzmnEAh4GW4kYVzGw 提取码: w3p6
 
 ### 预测步骤
 #### 1、使用预训练权重
@@ -40,9 +47,9 @@ a、按照训练步骤训练。
 b、在yolo.py文件里面，在如下部分修改model_path和classes_path使其对应训练好的文件；**model_path对应logs文件夹下面的权值文件，classes_path是model_path对应分的类**。  
 ```python
 _defaults = {
-    "model_path": 'model_data/yolov4_tiny_voc.h5',
+    "model_path": 'model_data/yolov4_tiny_weights_coco.h5',
     "anchors_path": 'model_data/yolo_anchors.txt',
-    "classes_path": 'model_data/voc_classes.txt,
+    "classes_path": 'model_data/coco_classes.txt,
     "score" : 0.5,
     "iou" : 0.3,
     # 显存比较小可以使用416x416
