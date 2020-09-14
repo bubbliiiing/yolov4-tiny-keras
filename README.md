@@ -14,7 +14,7 @@
 ### 性能情况
 | 训练数据集 | 权值文件名称 | 测试数据集 | 输入图片大小 | mAP 0.5:0.95 | mAP 0.5 |
 | :-----: | :-----: | :------: | :------: | :------: | :-----: |
-| VOC07+12+COCO | [yolov4_tiny_weights_voc.h5](https://github.com/bubbliiiing/yolov4-tiny-keras/releases/download/v1.1/yolov4_tiny_weights_voc.h5) | VOC-Test07 | 416x416 | - | 74.95
+| VOC07+12+COCO | [yolov4_tiny_weights_voc.h5](https://github.com/bubbliiiing/yolov4-tiny-keras/releases/download/v1.1/yolov4_tiny_weights_voc.h5) | VOC-Test07 | 416x416 | - | 75.0
 | COCO-Train2017 | [yolov4_tiny_weights_coco.h5](https://github.com/bubbliiiing/yolov4-tiny-keras/releases/download/v1.1/yolov4_tiny_weights_coco.h5) | COCO-Val2017 | 416x416 | 19.1 | 38.4
 
 ### 所需环境
