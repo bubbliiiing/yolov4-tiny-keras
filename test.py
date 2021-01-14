@@ -1,11 +1,16 @@
-from nets.yolo4_tiny import yolo_body
+#--------------------------------------------#
+#   该部分代码只用于看网络结构，并非测试代码
+#   map测试请看get_dr_txt.py、get_gt_txt.py
+#   和get_map.py
+#--------------------------------------------#
 from keras.layers import Input
 
-# 输入的图像为
-image_input = Input(shape=(416, 416, 3))
-model = yolo_body(image_input,3,20)
-model.summary()
+from nets.yolo4_tiny import yolo_body
 
+if __name__ == "__main__":
+    inputs = Input([416, 416, 3])
+    model = yolo_body(inputs, 3, 80)
+    model.summary()
 
-# for i,layer in enumerate(model.layers):
-#     print(i,layer.name)
+    # for i,layer in enumerate(model.layers):
+    #     print(i,layer.name)

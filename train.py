@@ -1,14 +1,17 @@
+import keras.backend as K
 import numpy as np
 import tensorflow as tf
-import keras.backend as K
+from keras.backend.tensorflow_backend import set_session
+from keras.callbacks import (EarlyStopping, ModelCheckpoint, ReduceLROnPlateau,
+                             TensorBoard)
 from keras.layers import Input, Lambda
 from keras.models import Model
 from keras.optimizers import Adam
-from keras.callbacks import TensorBoard, ModelCheckpoint, ReduceLROnPlateau, EarlyStopping
-from nets.yolo4_tiny import yolo_body
+
 from nets.loss import yolo_loss
-from keras.backend.tensorflow_backend import set_session
-from utils.utils import get_random_data,get_random_data_with_Mosaic,rand,WarmUpCosineDecayScheduler
+from nets.yolo4_tiny import yolo_body
+from utils.utils import (WarmUpCosineDecayScheduler, get_random_data,
+                         get_random_data_with_Mosaic, rand)
 
 
 #---------------------------------------------------#
@@ -31,8 +34,7 @@ def get_anchors(anchors_path):
 #---------------------------------------------------#
 #   训练数据生成器
 #---------------------------------------------------#
-def data_generator(annotation_lines, batch_size, input_shape, anchors, num_classes, mosaic=False):
-    '''data generator for fit_generator'''
+def data_generator(annotation_lines, batch_size, input_shape, anchors, num_classes, mosaic=False, random=True):
     n = len(annotation_lines)
     i = 0
     flag = True
@@ -45,13 +47,13 @@ def data_generator(annotation_lines, batch_size, input_shape, anchors, num_class
             if mosaic:
                 if flag and (i+4) < n:
                     image, box = get_random_data_with_Mosaic(annotation_lines[i:i+4], input_shape)
-                    i = (i+4) % n
+                    i = (i+1) % n
                 else:
-                    image, box = get_random_data(annotation_lines[i], input_shape)
+                    image, box = get_random_data(annotation_lines[i], input_shape, random=random)
                     i = (i+1) % n
                 flag = bool(1-flag)
             else:
-                image, box = get_random_data(annotation_lines[i], input_shape)
+                image, box = get_random_data(annotation_lines[i], input_shape, random=random)
                 i = (i+1) % n
             image_data.append(image)
             box_data.append(box)
@@ -60,71 +62,114 @@ def data_generator(annotation_lines, batch_size, input_shape, anchors, num_class
         y_true = preprocess_true_boxes(box_data, input_shape, anchors, num_classes)
         yield [image_data, *y_true], np.zeros(batch_size)
 
-
 #---------------------------------------------------#
 #   读入xml文件，并输出y_true
 #---------------------------------------------------#
 def preprocess_true_boxes(true_boxes, input_shape, anchors, num_classes):
     assert (true_boxes[..., 4]<num_classes).all(), 'class id must be less than num_classes'
-    # 一共有三个特征层数
+    # 一共有两个特征层数
     num_layers = len(anchors)//3
-    # 先验框
+    #-----------------------------------------------------------#
+    #   13x13的特征层对应的anchor是[81,82], [135,169], [344,319]
+    #   26x26的特征层对应的anchor是[23,27], [37,58], [81,82]
+    #-----------------------------------------------------------#
     anchor_mask = [[6,7,8], [3,4,5], [0,1,2]] if num_layers==3 else [[3,4,5], [1,2,3]]
 
+    #-----------------------------------------------------------#
+    #   获得框的坐标和图片的大小
+    #-----------------------------------------------------------#
     true_boxes = np.array(true_boxes, dtype='float32')
-    input_shape = np.array(input_shape, dtype='int32') # 416,416
-    # 读出xy轴，读出长宽
-    # 中心点(m,n,2)
+    input_shape = np.array(input_shape, dtype='int32') 
+    #-----------------------------------------------------------#
+    #   通过计算获得真实框的中心和宽高
+    #   中心点(m,n,2) 宽高(m,n,2)
+    #-----------------------------------------------------------#
     boxes_xy = (true_boxes[..., 0:2] + true_boxes[..., 2:4]) // 2
     boxes_wh = true_boxes[..., 2:4] - true_boxes[..., 0:2]
-    # 计算比例
+    #-----------------------------------------------------------#
+    #   将真实框归一化到小数形式
+    #-----------------------------------------------------------#
     true_boxes[..., 0:2] = boxes_xy/input_shape[::-1]
     true_boxes[..., 2:4] = boxes_wh/input_shape[::-1]
 
-    # m张图
+    # m为图片数量，grid_shapes为网格的shape
     m = true_boxes.shape[0]
-    # 得到网格的shape为13,13;26,26;
     grid_shapes = [input_shape//{0:32, 1:16, 2:8}[l] for l in range(num_layers)]
-    # y_true的格式为(m,13,13,3,85)(m,26,26,3,85)
+    #-----------------------------------------------------------#
+    #   y_true的格式为(m,13,13,3,85)(m,26,26,3,85)(m,52,52,3,85)
+    #-----------------------------------------------------------#
     y_true = [np.zeros((m,grid_shapes[l][0],grid_shapes[l][1],len(anchor_mask[l]),5+num_classes),
         dtype='float32') for l in range(num_layers)]
-    # [1,9,2]
+
+    #-----------------------------------------------------------#
+    #   [6,2] -> [1,6,2]
+    #-----------------------------------------------------------#
     anchors = np.expand_dims(anchors, 0)
     anchor_maxes = anchors / 2.
     anchor_mins = -anchor_maxes
-    # 长宽要大于0才有效
+
+    #-----------------------------------------------------------#
+    #   长宽要大于0才有效
+    #-----------------------------------------------------------#
     valid_mask = boxes_wh[..., 0]>0
 
     for b in range(m):
         # 对每一张图进行处理
         wh = boxes_wh[b, valid_mask[b]]
         if len(wh)==0: continue
-        # [n,1,2]
+        #-----------------------------------------------------------#
+        #   [n,2] -> [n,1,2]
+        #-----------------------------------------------------------#
         wh = np.expand_dims(wh, -2)
         box_maxes = wh / 2.
         box_mins = -box_maxes
 
-        # 计算真实框和哪个先验框最契合
+        #-----------------------------------------------------------#
+        #   计算所有真实框和先验框的交并比
+        #   intersect_area  [n,6]
+        #   box_area        [n,1]
+        #   anchor_area     [1,6]
+        #   iou             [n,6]
+        #-----------------------------------------------------------#
         intersect_mins = np.maximum(box_mins, anchor_mins)
         intersect_maxes = np.minimum(box_maxes, anchor_maxes)
         intersect_wh = np.maximum(intersect_maxes - intersect_mins, 0.)
         intersect_area = intersect_wh[..., 0] * intersect_wh[..., 1]
+
         box_area = wh[..., 0] * wh[..., 1]
         anchor_area = anchors[..., 0] * anchors[..., 1]
+
         iou = intersect_area / (box_area + anchor_area - intersect_area)
-        # 维度是(n) 感谢 消尽不死鸟 的提醒
+        #-----------------------------------------------------------#
+        #   维度是[n,] 感谢 消尽不死鸟 的提醒
+        #-----------------------------------------------------------#
         best_anchor = np.argmax(iou, axis=-1)
 
         for t, n in enumerate(best_anchor):
+            #-----------------------------------------------------------#
+            #   找到每个真实框所属的特征层
+            #-----------------------------------------------------------#
             for l in range(num_layers):
                 if n in anchor_mask[l]:
-                    # floor用于向下取整
-                    i = np.floor(true_boxes[b,t,0]*grid_shapes[l][1]).astype('int32')
-                    j = np.floor(true_boxes[b,t,1]*grid_shapes[l][0]).astype('int32')
-                    # 找到真实框在特征层l中第b副图像对应的位置
+                    #-----------------------------------------------------------#
+                    #   floor用于向下取整，找到真实框所属的特征层对应的x、y轴坐标
+                    #-----------------------------------------------------------#
+                    i = np.floor(true_boxes[b,t,0] * grid_shapes[l][1]).astype('int32')
+                    j = np.floor(true_boxes[b,t,1] * grid_shapes[l][0]).astype('int32')
+                    #-----------------------------------------------------------#
+                    #   k指的的当前这个特征点的第k个先验框
+                    #-----------------------------------------------------------#
                     k = anchor_mask[l].index(n)
-                    c = true_boxes[b,t, 4].astype('int32')
-                    y_true[l][b, j, i, k, 0:4] = true_boxes[b,t, 0:4]
+                    #-----------------------------------------------------------#
+                    #   c指的是当前这个真实框的种类
+                    #-----------------------------------------------------------#
+                    c = true_boxes[b, t, 4].astype('int32')
+                    #-----------------------------------------------------------#
+                    #   y_true的shape为(m,13,13,3,85)(m,26,26,3,85)(m,52,52,3,85)
+                    #   最后的85可以拆分成4+1+80，4代表的是框的中心与宽高、
+                    #   1代表的是置信度、80代表的是种类
+                    #-----------------------------------------------------------#
+                    y_true[l][b, j, i, k, 0:4] = true_boxes[b, t, 0:4]
                     y_true[l][b, j, i, k, 4] = 1
                     y_true[l][b, j, i, k, 5+c] = 1
 
@@ -136,69 +181,99 @@ def preprocess_true_boxes(true_boxes, input_shape, anchors, num_classes):
 #   https://www.bilibili.com/video/BV1zE411u7Vw
 #----------------------------------------------------#
 if __name__ == "__main__":
-    # 标签的位置
+    #----------------------------------------------------#
+    #   获得图片路径和标签
+    #----------------------------------------------------#
     annotation_path = '2007_train.txt'
-    # 获取classes和anchor的位置
+    #------------------------------------------------------#
+    #   训练后的模型保存的位置，保存在logs文件夹里面
+    #------------------------------------------------------#
+    log_dir = 'logs/'
+    #----------------------------------------------------#
+    #   classes和anchor的路径，非常重要
+    #   训练前一定要修改classes_path，使其对应自己的数据集
+    #----------------------------------------------------#
     classes_path = 'model_data/voc_classes.txt'    
     anchors_path = 'model_data/yolo_anchors.txt'
-    # 预训练模型的位置
-    weights_path = 'model_data/yolov4_tiny_weights_coco.h5'
-    # 获得classes和anchor
-    class_names = get_classes(classes_path)
-    anchors = get_anchors(anchors_path)
-    # 一共有多少类
-    num_classes = len(class_names)
-    num_anchors = len(anchors)
-    # 训练后的模型保存的位置
-    log_dir = 'logs/'
-    # 输入的shape大小
-    # 显存比较小可以使用416x416
-    # 现存比较大可以使用608x608
-    input_shape = (416,416)
-    mosaic = False
-    Cosine_scheduler = False
-    label_smoothing = 0
-
-    # 清除session
-    K.clear_session()
-
-    # 输入的图像为
-    image_input = Input(shape=(None, None, 3))
-    h, w = input_shape
-
-    # 创建yolo模型
-    print('Create YOLOv4-Tiny model with {} anchors and {} classes.'.format(num_anchors, num_classes))
-    model_body = yolo_body(image_input, num_anchors//2, num_classes)
-    
-    model_body.summary()
     #------------------------------------------------------#
     #   权值文件请看README，百度网盘下载
     #   训练自己的数据集时提示维度不匹配正常
     #   预测的东西都不一样了自然维度不匹配
     #------------------------------------------------------#
-    # 载入预训练权重
+    weights_path = 'model_data/yolov4_tiny_weights_coco.h5'
+    #------------------------------------------------------#
+    #   训练用图片大小
+    #   一般在416x416和608x608选择
+    #------------------------------------------------------#
+    input_shape = (416,416)
+    #------------------------------------------------------#
+    #   是否对损失进行归一化
+    #------------------------------------------------------#
+    normalize = True
+
+    #----------------------------------------------------#
+    #   获取classes和anchor
+    #----------------------------------------------------#
+    class_names = get_classes(classes_path)
+    anchors = get_anchors(anchors_path)
+    #------------------------------------------------------#
+    #   一共有多少类和多少先验框
+    #------------------------------------------------------#
+    num_classes = len(class_names)
+    num_anchors = len(anchors)
+    #------------------------------------------------------#
+    #   Yolov4的tricks应用
+    #   mosaic 马赛克数据增强 True or False
+    #   Cosine_scheduler 余弦退火学习率 True or False
+    #   label_smoothing 标签平滑 0.01以下一般 如0.01、0.005
+    #------------------------------------------------------#
+    mosaic = False
+    Cosine_scheduler = False
+    label_smoothing = 0
+
+    K.clear_session()
+    #------------------------------------------------------#
+    #   创建yolo模型
+    #------------------------------------------------------#
+    image_input = Input(shape=(None, None, 3))
+    h, w = input_shape
+    print('Create YOLOv4-Tiny model with {} anchors and {} classes.'.format(num_anchors, num_classes))
+    model_body = yolo_body(image_input, num_anchors//2, num_classes)
+    
+    #------------------------------------------------------#
+    #   载入预训练权重
+    #------------------------------------------------------#
     print('Load weights {}.'.format(weights_path))
     model_body.load_weights(weights_path, by_name=True, skip_mismatch=True)
     
-    # y_true为13,13,3,85
-    # 26,26,3,85
+    #------------------------------------------------------#
+    #   在这个地方设置损失，将网络的输出结果传入loss函数
+    #   把整个模型的输出作为loss
+    #------------------------------------------------------#
     y_true = [Input(shape=(h//{0:32, 1:16}[l], w//{0:32, 1:16}[l], num_anchors//2, num_classes+5)) for l in range(2)]
-
-    # 输入为*model_body.input, *y_true
-    # 输出为model_loss
     loss_input = [*model_body.output, *y_true]
     model_loss = Lambda(yolo_loss, output_shape=(1,), name='yolo_loss',
         arguments={'anchors': anchors, 'num_classes': num_classes, 'ignore_thresh': 0.5, 'label_smoothing': label_smoothing})(loss_input)
 
     model = Model([model_body.input, *y_true], model_loss)
 
-    # 训练参数设置
+    #-------------------------------------------------------------------------------#
+    #   训练参数的设置
+    #   logging表示tensorboard的保存地址
+    #   checkpoint用于设置权值保存的细节，period用于修改多少epoch保存一次
+    #   reduce_lr用于设置学习率下降的方式
+    #   early_stopping用于设定早停，val_loss多次不下降自动结束训练，表示模型基本收敛
+    #-------------------------------------------------------------------------------#
     logging = TensorBoard(log_dir=log_dir)
     checkpoint = ModelCheckpoint(log_dir + 'ep{epoch:03d}-loss{loss:.3f}-val_loss{val_loss:.3f}.h5',
         monitor='val_loss', save_weights_only=True, save_best_only=False, period=1)
     early_stopping = EarlyStopping(monitor='val_loss', min_delta=0, patience=10, verbose=1)
 
-    # 0.1用于验证，0.9用于训练
+    #----------------------------------------------------------------------#
+    #   验证集的划分在train.py代码里面进行
+    #   2007_test.txt和2007_val.txt里面没有内容是正常的。训练不会使用到。
+    #   当前划分方式下，验证集和训练集的比例为1:9
+    #----------------------------------------------------------------------#
     val_split = 0.1
     with open(annotation_path) as f:
         lines = f.readlines()
@@ -214,6 +289,7 @@ if __name__ == "__main__":
     #   Init_Epoch为起始世代
     #   Freeze_Epoch为冻结训练的世代
     #   Epoch总训练世代
+    #   提示OOM或者显存不足请调小Batch_size
     #------------------------------------------------------#
     freeze_layers = 60
     for i in range(freeze_layers): model_body.layers[i].trainable = False
@@ -223,10 +299,9 @@ if __name__ == "__main__":
     if True:
         Init_epoch = 0
         Freeze_epoch = 50
-        # batch_size大小，每次喂入多少数据
-        batch_size = 16
-        # 最大学习率
+        batch_size = 32
         learning_rate_base = 1e-3
+
         if Cosine_scheduler:
             # 预热期
             warmup_epoch = int((Freeze_epoch-Init_epoch)*0.2)
@@ -263,11 +338,9 @@ if __name__ == "__main__":
     if True:
         Freeze_epoch = 50
         Epoch = 100
-        # batch_size大小，每次喂入多少数据
         batch_size = 16
-
-        # 最大学习率
         learning_rate_base = 1e-4
+
         if Cosine_scheduler:
             # 预热期
             warmup_epoch = int((Epoch-Freeze_epoch)*0.2)
