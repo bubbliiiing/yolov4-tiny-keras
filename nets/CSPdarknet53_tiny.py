@@ -1,11 +1,14 @@
 from functools import wraps
+
+import tensorflow as tf
 from keras import backend as K
-from keras.layers import Conv2D, Add, ZeroPadding2D, UpSampling2D, Concatenate, MaxPooling2D, Layer, Lambda
+from keras.layers import (Add, Concatenate, Conv2D, Lambda, Layer,
+                          MaxPooling2D, UpSampling2D, ZeroPadding2D)
 from keras.layers.advanced_activations import LeakyReLU
 from keras.layers.normalization import BatchNormalization
 from keras.regularizers import l2
 from utils.utils import compose
-import tensorflow as tf
+
 
 def route_group(input_layer, groups, group_id):
     convs = tf.split(input_layer, num_or_size_splits=groups, axis=-1)
@@ -24,7 +27,6 @@ def DarknetConv2D(*args, **kwargs):
     darknet_conv_kwargs.update(kwargs)
     return Conv2D(*args, **darknet_conv_kwargs)
 
-
 #---------------------------------------------------#
 #   卷积块
 #   DarknetConv2D + BatchNormalization + LeakyReLU
@@ -36,7 +38,6 @@ def DarknetConv2D_BN_Leaky(*args, **kwargs):
         DarknetConv2D(*args, **no_bias_kwargs),
         BatchNormalization(),
         LeakyReLU(alpha=0.1))
-
 
 '''
                     input

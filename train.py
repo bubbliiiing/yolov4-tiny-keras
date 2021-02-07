@@ -175,7 +175,6 @@ def preprocess_true_boxes(true_boxes, input_shape, anchors, num_classes):
 
     return y_true
 
-
 #----------------------------------------------------#
 #   检测精度mAP和pr曲线计算参考视频
 #   https://www.bilibili.com/video/BV1zE411u7Vw
@@ -255,7 +254,7 @@ if __name__ == "__main__":
     y_true = [Input(shape=(h//{0:32, 1:16}[l], w//{0:32, 1:16}[l], num_anchors//2, num_classes+5)) for l in range(2)]
     loss_input = [*model_body.output, *y_true]
     model_loss = Lambda(yolo_loss, output_shape=(1,), name='yolo_loss',
-        arguments={'anchors': anchors, 'num_classes': num_classes, 'ignore_thresh': 0.5, 'label_smoothing': label_smoothing})(loss_input)
+        arguments={'anchors': anchors, 'num_classes': num_classes, 'ignore_thresh': 0.5, 'label_smoothing': label_smoothing, 'normalize':normalize})(loss_input)
 
     model = Model([model_body.input, *y_true], model_loss)
 
