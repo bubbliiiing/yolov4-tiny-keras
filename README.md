@@ -39,7 +39,7 @@ keras==2.1.5
 
 ## 文件下载
 训练所需的各类权值均可在百度网盘中下载。   
-链接: https://pan.baidu.com/s/1XNGVKgsoqkvYgFeqCfNHoA 提取码: ygcs 
+链接: https://pan.baidu.com/s/1TVJhG1yKv_6U37JlnTFGpA 提取码: ehn9    
 
 VOC数据集下载地址如下：  
 VOC2007+2012训练集    
