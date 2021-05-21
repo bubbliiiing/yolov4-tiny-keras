@@ -1,18 +1,19 @@
 from functools import wraps
 
-import numpy as np
 import tensorflow as tf
 from keras import backend as K
-from keras.layers import (Add, Concatenate, Conv2D, MaxPooling2D, UpSampling2D,
-                          ZeroPadding2D)
+from keras.initializers import random_normal
+from keras.layers import Concatenate, Conv2D, UpSampling2D
 from keras.layers.advanced_activations import LeakyReLU
 from keras.layers.normalization import BatchNormalization
 from keras.models import Model
 from keras.regularizers import l2
 from utils.utils import compose
 
+from nets.attention import cbam_block, eca_block, se_block
 from nets.CSPdarknet53_tiny import darknet_body
 
+attention_block = [se_block, cbam_block, eca_block]
 
 #--------------------------------------------------#
 #   单次卷积DarknetConv2D
@@ -22,11 +23,10 @@ from nets.CSPdarknet53_tiny import darknet_body
 @wraps(Conv2D)
 def DarknetConv2D(*args, **kwargs):
     # darknet_conv_kwargs = {'kernel_regularizer': l2(5e-4)}
-    darknet_conv_kwargs = {}
+    darknet_conv_kwargs = {'kernel_initializer' : random_normal(stddev=0.02)}
     darknet_conv_kwargs['padding'] = 'valid' if kwargs.get('strides')==(2,2) else 'same'
     darknet_conv_kwargs.update(kwargs)
     return Conv2D(*args, **darknet_conv_kwargs)
-
 
 #---------------------------------------------------#
 #   卷积块
@@ -43,13 +43,18 @@ def DarknetConv2D_BN_Leaky(*args, **kwargs):
 #---------------------------------------------------#
 #   特征层->最后的输出
 #---------------------------------------------------#
-def yolo_body(inputs, num_anchors, num_classes):
+def yolo_body(inputs, num_anchors, num_classes, phi=0):
+    if phi >= 4:
+        raise AssertionError("Phi must be less than or equal to 3 (0, 1, 2, 3).")
     #---------------------------------------------------#
     #   生成CSPdarknet53_tiny的主干模型
     #   feat1的shape为26,26,256
     #   feat2的shape为13,13,512
     #---------------------------------------------------#
     feat1, feat2 = darknet_body(inputs)
+    if 1 <= phi and phi <= 3:
+        feat1 = attention_block[phi-1](feat1, name="feat1")
+        feat2 = attention_block[phi-1](feat2, name="feat2")
 
     # 13,13,512 -> 13,13,256
     P5 = DarknetConv2D_BN_Leaky(256, (1,1))(feat2)
@@ -59,6 +64,8 @@ def yolo_body(inputs, num_anchors, num_classes):
     
     # 13,13,256 -> 13,13,128 -> 26,26,128
     P5_upsample = compose(DarknetConv2D_BN_Leaky(128, (1,1)), UpSampling2D(2))(P5)
+    if 1 <= phi and phi <= 3:
+        P5_upsample = attention_block[phi-1](P5_upsample, name="P5_upsample")
     
     # 26,26,256 + 26,26,128 -> 26,26,384
     P4 = Concatenate()([P5_upsample, feat1])

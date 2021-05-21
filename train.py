@@ -1,7 +1,5 @@
 import keras.backend as K
 import numpy as np
-import tensorflow as tf
-from keras.backend.tensorflow_backend import set_session
 from keras.callbacks import (EarlyStopping, ModelCheckpoint, ReduceLROnPlateau,
                              TensorBoard)
 from keras.layers import Input, Lambda
@@ -10,9 +8,8 @@ from keras.optimizers import Adam
 
 from nets.loss import yolo_loss
 from nets.yolo4_tiny import yolo_body
-from utils.utils import (WarmUpCosineDecayScheduler, get_random_data,
-                         get_random_data_with_Mosaic, rand)
-
+from utils.utils import (LossHistory, WarmUpCosineDecayScheduler,
+                         get_random_data, get_random_data_with_Mosaic)
 
 #---------------------------------------------------#
 #   获得类和先验框
@@ -180,6 +177,14 @@ def preprocess_true_boxes(true_boxes, input_shape, anchors, num_classes):
 #   https://www.bilibili.com/video/BV1zE411u7Vw
 #----------------------------------------------------#
 if __name__ == "__main__":
+    #-------------------------------#
+    #   所使用的注意力机制的类型
+    #   phi = 0为不使用注意力机制
+    #   phi = 1为SE
+    #   phi = 2为CBAM
+    #   phi = 3为ECA
+    #-------------------------------#
+    phi = 0
     #----------------------------------------------------#
     #   获得图片路径和标签
     #----------------------------------------------------#
@@ -210,17 +215,6 @@ if __name__ == "__main__":
     #   用于决定计算最终loss是除上batch_size还是除上正样本数量
     #------------------------------------------------------#
     normalize = False
-
-    #----------------------------------------------------#
-    #   获取classes和anchor
-    #----------------------------------------------------#
-    class_names = get_classes(classes_path)
-    anchors = get_anchors(anchors_path)
-    #------------------------------------------------------#
-    #   一共有多少类和多少先验框
-    #------------------------------------------------------#
-    num_classes = len(class_names)
-    num_anchors = len(anchors)
     #------------------------------------------------------#
     #   Yolov4的tricks应用
     #   mosaic 马赛克数据增强 True or False 
@@ -232,6 +226,17 @@ if __name__ == "__main__":
     Cosine_scheduler = False
     label_smoothing = 0
 
+    #----------------------------------------------------#
+    #   获取classes和anchor
+    #----------------------------------------------------#
+    class_names = get_classes(classes_path)
+    anchors = get_anchors(anchors_path)
+    #------------------------------------------------------#
+    #   一共有多少类和多少先验框
+    #------------------------------------------------------#
+    num_classes = len(class_names)
+    num_anchors = len(anchors)
+
     K.clear_session()
     #------------------------------------------------------#
     #   创建yolo模型
@@ -239,7 +244,7 @@ if __name__ == "__main__":
     image_input = Input(shape=(None, None, 3))
     h, w = input_shape
     print('Create YOLOv4-Tiny model with {} anchors and {} classes.'.format(num_anchors, num_classes))
-    model_body = yolo_body(image_input, num_anchors//2, num_classes)
+    model_body = yolo_body(image_input, num_anchors//2, num_classes, phi=phi)
     
     #------------------------------------------------------#
     #   载入预训练权重
@@ -269,6 +274,7 @@ if __name__ == "__main__":
     checkpoint = ModelCheckpoint(log_dir + 'ep{epoch:03d}-loss{loss:.3f}-val_loss{val_loss:.3f}.h5',
         monitor='val_loss', save_weights_only=True, save_best_only=False, period=1)
     early_stopping = EarlyStopping(monitor='val_loss', min_delta=0, patience=10, verbose=1)
+    loss_history = LossHistory(log_dir)
 
     #----------------------------------------------------------------------#
     #   验证集的划分在train.py代码里面进行
@@ -298,20 +304,20 @@ if __name__ == "__main__":
 
     # 调整非主干模型first
     if True:
-        Init_epoch = 0
-        Freeze_epoch = 50
-        batch_size = 32
-        learning_rate_base = 1e-3
+        Init_epoch          = 0
+        Freeze_epoch        = 50
+        batch_size          = 32
+        learning_rate_base  = 1e-3
 
         if Cosine_scheduler:
             # 预热期
-            warmup_epoch = int((Freeze_epoch-Init_epoch)*0.2)
+            warmup_epoch    = int((Freeze_epoch-Init_epoch)*0.2)
             # 总共的步长
-            total_steps = int((Freeze_epoch-Init_epoch) * num_train / batch_size)
+            total_steps     = int((Freeze_epoch-Init_epoch) * num_train / batch_size)
             # 预热步长
-            warmup_steps = int(warmup_epoch * num_train / batch_size)
+            warmup_steps    = int(warmup_epoch * num_train / batch_size)
             # 学习率
-            reduce_lr = WarmUpCosineDecayScheduler(learning_rate_base=learning_rate_base,
+            reduce_lr       = WarmUpCosineDecayScheduler(learning_rate_base=learning_rate_base,
                                                         total_steps=total_steps,
                                                         warmup_learning_rate=1e-4,
                                                         warmup_steps=warmup_steps,
@@ -320,37 +326,42 @@ if __name__ == "__main__":
                                                         )
             model.compile(optimizer=Adam(), loss={'yolo_loss': lambda y_true, y_pred: y_pred})
         else:
-            reduce_lr = ReduceLROnPlateau(monitor='val_loss', factor=0.5, patience=3, verbose=1)
+            reduce_lr       = ReduceLROnPlateau(monitor='val_loss', factor=0.5, patience=3, verbose=1)
             model.compile(optimizer=Adam(learning_rate_base), loss={'yolo_loss': lambda y_true, y_pred: y_pred})
 
+        epoch_size          = num_train // batch_size
+        epoch_size_val      = num_val // batch_size
+
+        if epoch_size == 0 or epoch_size_val == 0:
+            raise ValueError("数据集过小，无法进行训练，请扩充数据集。")
+
         print('Train on {} samples, val on {} samples, with batch size {}.'.format(num_train, num_val, batch_size))
-        model.fit_generator(data_generator(lines[:num_train], batch_size, input_shape, anchors, num_classes, mosaic=mosaic),
-                steps_per_epoch=max(1, num_train//batch_size),
-                validation_data=data_generator(lines[num_train:], batch_size, input_shape, anchors, num_classes, mosaic=False),
-                validation_steps=max(1, num_val//batch_size),
+        model.fit_generator(data_generator(lines[:num_train], batch_size, input_shape, anchors, num_classes, mosaic=mosaic, random=True),
+                steps_per_epoch=epoch_size,
+                validation_data=data_generator(lines[num_train:], batch_size, input_shape, anchors, num_classes, mosaic=False, random=False),
+                validation_steps=epoch_size_val,
                 epochs=Freeze_epoch,
                 initial_epoch=Init_epoch,
-                callbacks=[logging, checkpoint, reduce_lr, early_stopping])
+                callbacks=[logging, checkpoint, reduce_lr, early_stopping, loss_history])
         model.save_weights(log_dir + 'trained_weights_stage_1.h5')
 
     for i in range(freeze_layers): model_body.layers[i].trainable = True
 
-    # 解冻后训练
     if True:
-        Freeze_epoch = 50
-        Epoch = 100
-        batch_size = 16
-        learning_rate_base = 1e-4
+        Freeze_epoch        = 50
+        Epoch               = 100
+        batch_size          = 16
+        learning_rate_base  = 1e-4
 
         if Cosine_scheduler:
             # 预热期
-            warmup_epoch = int((Epoch-Freeze_epoch)*0.2)
+            warmup_epoch    = int((Epoch-Freeze_epoch)*0.2)
             # 总共的步长
-            total_steps = int((Epoch-Freeze_epoch) * num_train / batch_size)
+            total_steps     = int((Epoch-Freeze_epoch) * num_train / batch_size)
             # 预热步长
-            warmup_steps = int(warmup_epoch * num_train / batch_size)
+            warmup_steps    = int(warmup_epoch * num_train / batch_size)
             # 学习率
-            reduce_lr = WarmUpCosineDecayScheduler(learning_rate_base=learning_rate_base,
+            reduce_lr       = WarmUpCosineDecayScheduler(learning_rate_base=learning_rate_base,
                                                         total_steps=total_steps,
                                                         warmup_learning_rate=1e-5,
                                                         warmup_steps=warmup_steps,
@@ -359,15 +370,21 @@ if __name__ == "__main__":
                                                         )
             model.compile(optimizer=Adam(), loss={'yolo_loss': lambda y_true, y_pred: y_pred})
         else:
-            reduce_lr = ReduceLROnPlateau(monitor='val_loss', factor=0.5, patience=3, verbose=1)
+            reduce_lr       = ReduceLROnPlateau(monitor='val_loss', factor=0.5, patience=3, verbose=1)
             model.compile(optimizer=Adam(learning_rate_base), loss={'yolo_loss': lambda y_true, y_pred: y_pred})
 
+        epoch_size          = num_train // batch_size
+        epoch_size_val      = num_val // batch_size
+
+        if epoch_size == 0 or epoch_size_val == 0:
+            raise ValueError("数据集过小，无法进行训练，请扩充数据集。")
+
         print('Train on {} samples, val on {} samples, with batch size {}.'.format(num_train, num_val, batch_size))
-        model.fit_generator(data_generator(lines[:num_train], batch_size, input_shape, anchors, num_classes, mosaic=mosaic),
-                steps_per_epoch=max(1, num_train//batch_size),
-                validation_data=data_generator(lines[num_train:], batch_size, input_shape, anchors, num_classes, mosaic=False),
-                validation_steps=max(1, num_val//batch_size),
+        model.fit_generator(data_generator(lines[:num_train], batch_size, input_shape, anchors, num_classes, mosaic=mosaic, random=True),
+                steps_per_epoch=epoch_size,
+                validation_data=data_generator(lines[num_train:], batch_size, input_shape, anchors, num_classes, mosaic=False, random=False),
+                validation_steps=epoch_size_val,
                 epochs=Epoch,
                 initial_epoch=Freeze_epoch,
-                callbacks=[logging, checkpoint, reduce_lr, early_stopping])
+                callbacks=[logging, checkpoint, reduce_lr, early_stopping, loss_history])
         model.save_weights(log_dir + 'last1.h5')

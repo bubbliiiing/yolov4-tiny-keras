@@ -1,8 +1,6 @@
-import collections
 import colorsys
-import copy
 import os
-from timeit import default_timer as timer
+import time
 
 import numpy as np
 from keras import backend as K
@@ -15,21 +13,31 @@ from utils.utils import letterbox_image
 
 
 #--------------------------------------------#
-#   使用自己训练好的模型预测需要修改2个参数
-#   model_path和classes_path都需要修改！
+#   使用自己训练好的模型预测需要修改3个参数
+#   model_path、classes_path和phi都需要修改！
 #   如果出现shape不匹配，一定要注意
-#   训练时的model_path和classes_path参数的修改
+#   训练时的model_path、classes_path和phi参数的修改
 #--------------------------------------------#
 class YOLO(object):
     _defaults = {
         "model_path"        : 'model_data/yolov4_tiny_weights_coco.h5',
         "anchors_path"      : 'model_data/yolo_anchors.txt',
         "classes_path"      : 'model_data/coco_classes.txt',
+        #-------------------------------#
+        #   所使用的注意力机制的类型
+        #   phi = 0为不使用注意力机制
+        #   phi = 1为SE
+        #   phi = 2为CBAM
+        #   phi = 3为ECA
+        #-------------------------------#
+        "phi"               : 0,  
         "score"             : 0.5,
         "iou"               : 0.3,
-        "max_boxes"         : 100,
-        # 显存比较小可以使用416x416
-        # 显存比较大可以使用608x608
+        "max_boxes"         : 100,  
+        #-------------------------------#
+        #   显存比较小可以使用416x416
+        #   显存比较大可以使用608x608
+        #-------------------------------#
         "model_image_size"  : (416, 416),
         #---------------------------------------------------------------------#
         #   该变量用于控制是否使用letterbox_image对输入图像进行不失真的resize，
@@ -95,7 +103,7 @@ class YOLO(object):
         try:
             self.yolo_model = load_model(model_path, compile=False)
         except:
-            self.yolo_model = yolo_body(Input(shape=(None,None,3)), num_anchors//2, num_classes)
+            self.yolo_model = yolo_body(Input(shape=(None,None,3)), num_anchors//2, num_classes, self.phi)
             self.yolo_model.load_weights(self.model_path)
         else:
             assert self.yolo_model.layers[-1].output_shape[-1] == \
@@ -133,14 +141,18 @@ class YOLO(object):
     #---------------------------------------------------#
     def detect_image(self, image):
         #---------------------------------------------------------#
+        #   在这里将图像转换成RGB图像，防止灰度图在预测时报错。
+        #---------------------------------------------------------#
+        image = image.convert('RGB')
+
+        #---------------------------------------------------------#
         #   给图像增加灰条，实现不失真的resize
         #   也可以直接resize进行识别
         #---------------------------------------------------------#
         if self.letterbox_image:
             boxed_image = letterbox_image(image, (self.model_image_size[1],self.model_image_size[0]))
         else:
-            boxed_image = image.convert('RGB')
-            boxed_image = boxed_image.resize((self.model_image_size[1],self.model_image_size[0]), Image.BICUBIC)
+            boxed_image = image.resize((self.model_image_size[1],self.model_image_size[0]), Image.BICUBIC)
         image_data = np.array(boxed_image, dtype='float32')
         image_data /= 255.
         #---------------------------------------------------------#
@@ -163,7 +175,7 @@ class YOLO(object):
         #---------------------------------------------------------#
         #   设置字体
         #---------------------------------------------------------#
-        font = ImageFont.truetype(font='font/simhei.ttf',
+        font = ImageFont.truetype(font='model_data/simhei.ttf',
                     size=np.floor(3e-2 * image.size[1] + 0.5).astype('int32'))
 
         thickness = max((image.size[0] + image.size[1]) // 300, 1)
@@ -207,6 +219,35 @@ class YOLO(object):
             del draw
 
         return image
+
+    def get_FPS(self, image, test_interval):
+        if self.letterbox_image:
+            boxed_image = letterbox_image(image, (self.model_image_size[1],self.model_image_size[0]))
+        else:
+            boxed_image = image.convert('RGB')
+            boxed_image = boxed_image.resize((self.model_image_size[1],self.model_image_size[0]), Image.BICUBIC)
+        image_data = np.array(boxed_image, dtype='float32')
+        image_data /= 255.
+        image_data = np.expand_dims(image_data, 0)
+
+        out_boxes, out_scores, out_classes = self.sess.run(
+            [self.boxes, self.scores, self.classes],
+            feed_dict={
+                self.yolo_model.input: image_data,
+                self.input_image_shape: [image.size[1], image.size[0]],
+                K.learning_phase(): 0})
+
+        t1 = time.time()
+        for _ in range(test_interval):
+            out_boxes, out_scores, out_classes = self.sess.run(
+                [self.boxes, self.scores, self.classes],
+                feed_dict={
+                    self.yolo_model.input: image_data,
+                    self.input_image_shape: [image.size[1], image.size[0]],
+                    K.learning_phase(): 0})
+        t2 = time.time()
+        tact_time = (t2 - t1) / test_interval
+        return tact_time
 
     def close_session(self):
         self.sess.close()

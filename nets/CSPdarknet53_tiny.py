@@ -1,9 +1,9 @@
 from functools import wraps
 
 import tensorflow as tf
-from keras import backend as K
-from keras.layers import (Add, Concatenate, Conv2D, Lambda, Layer,
-                          MaxPooling2D, UpSampling2D, ZeroPadding2D)
+from keras.initializers import random_normal
+from keras.layers import (Concatenate, Conv2D, Lambda, MaxPooling2D,
+                          ZeroPadding2D)
 from keras.layers.advanced_activations import LeakyReLU
 from keras.layers.normalization import BatchNormalization
 from keras.regularizers import l2
@@ -22,7 +22,7 @@ def route_group(input_layer, groups, group_id):
 @wraps(Conv2D)
 def DarknetConv2D(*args, **kwargs):
     # darknet_conv_kwargs = {'kernel_regularizer': l2(5e-4)}
-    darknet_conv_kwargs = {}
+    darknet_conv_kwargs = {'kernel_initializer' : random_normal(stddev=0.02)}
     darknet_conv_kwargs['padding'] = 'valid' if kwargs.get('strides')==(2,2) else 'same'
     darknet_conv_kwargs.update(kwargs)
     return Conv2D(*args, **darknet_conv_kwargs)
@@ -73,7 +73,7 @@ def resblock_body(x, num_filters):
     route = x
 
     # 对特征层的通道进行分割，取第二部分作为主干部分。
-    x = Lambda(route_group,arguments={'groups':2, 'group_id':1})(x) 
+    x = Lambda(route_group, arguments={'groups':2, 'group_id':1})(x) 
     # 对主干部分进行3x3卷积
     x = DarknetConv2D_BN_Leaky(int(num_filters/2), (3,3))(x)
     # 引出一个小的残差边route_1
