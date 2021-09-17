@@ -1,8 +1,10 @@
+import math
+
 from keras import backend as K
 from keras.layers import (Activation, Add, Concatenate, Conv1D, Conv2D, Dense,
                           GlobalAveragePooling2D, GlobalMaxPooling2D, Lambda,
                           Reshape, multiply)
-import math
+
 
 def se_block(input_feature, ratio=16, name=""):
 	channel = input_feature._keras_shape[-1]
