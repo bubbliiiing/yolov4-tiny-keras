@@ -8,10 +8,6 @@ from utils.callbacks import (ExponentDecayScheduler, LossHistory,
 from utils.dataloader import YoloDatasets
 from utils.utils import get_anchors, get_classes
 
-#----------------------------------------------------#
-#   检测精度mAP和pr曲线计算参考视频
-#   https://www.bilibili.com/video/BV1zE411u7Vw
-#----------------------------------------------------#
 if __name__ == "__main__":
     #--------------------------------------------------------#
     #   训练前一定要修改classes_path，使其对应自己的数据集
