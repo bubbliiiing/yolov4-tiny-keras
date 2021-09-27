@@ -105,11 +105,12 @@ if __name__ == "__main__":
     #   创建yolo模型
     #------------------------------------------------------#
     model_body  = yolo_body((None, None, 3), anchors_mask, num_classes, phi = phi)
-    #------------------------------------------------------#
-    #   载入预训练权重
-    #------------------------------------------------------#
-    print('Load weights {}.'.format(model_path))
-    model_body.load_weights(model_path, by_name=True, skip_mismatch=True)
+    if model_path != '':
+        #------------------------------------------------------#
+        #   载入预训练权重
+        #------------------------------------------------------#
+        print('Load weights {}.'.format(model_path))
+        model_body.load_weights(model_path, by_name=True, skip_mismatch=True)
 
     model = get_train_model(model_body, input_shape, num_classes, anchors, anchors_mask, label_smoothing)
     #-------------------------------------------------------------------------------#
