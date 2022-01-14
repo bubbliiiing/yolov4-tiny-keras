@@ -45,8 +45,8 @@ keras==2.1.5
 
 ## 文件下载
 训练所需的各类权值均可在百度网盘中下载。   
-链接: https://pan.baidu.com/s/1LCg6T3v1qzkM00g4xTTyPQ    
-提取码: fy8c    
+链接: https://pan.baidu.com/s/1f9VXWsi4fcYEkEO2YPQKIw    
+提取码: i2ut  
 
 VOC数据集下载地址如下，里面已经包括了训练集、测试集、验证集（与测试集一样），无需再次划分：  
 链接: https://pan.baidu.com/s/19Mw2u_df_nBzsC2lg20fQA   
