@@ -1,5 +1,6 @@
 import math
 
+import tensorflow as tf
 from keras import backend as K
 from keras.layers import (Activation, Add, Concatenate, Conv1D, Conv2D, Dense,
                           GlobalAveragePooling2D, GlobalMaxPooling2D, Lambda,
@@ -99,4 +100,29 @@ def eca_block(input_feature, b=1, gamma=2, name=""):
 	x = Reshape((1, 1, -1))(x)
 
 	output = multiply([input_feature,x])
+	return output
+
+def ca_block(input_feature, ratio=16, name=""):
+	channel = input_feature._keras_shape[-1]
+	h		= input_feature._keras_shape[1]
+	w		= input_feature._keras_shape[2]
+ 
+	x_h = Lambda(lambda x: K.mean(x, axis=2, keepdims=True))(input_feature)
+	x_h = Lambda(lambda x: K.permute_dimensions(x, [0, 2, 1, 3]))(x_h)
+	x_w = Lambda(lambda x: K.max(x, axis=1, keepdims=True))(input_feature)
+	
+	x_cat_conv_relu = Concatenate(axis=2)([x_w, x_h])
+	x_cat_conv_relu = Conv2D(channel // ratio, kernel_size=1, strides=1, use_bias=False, name = "ca_block_conv1_"+str(name))(x_cat_conv_relu)
+	x_cat_conv_relu = Activation('relu')(x_cat_conv_relu)
+ 
+	x_cat_conv_split_h, x_cat_conv_split_w = Lambda(lambda x: tf.split(x, num_or_size_splits=[h, w], axis=2))(x_cat_conv_relu)
+	x_cat_conv_split_h = Lambda(lambda x: K.permute_dimensions(x, [0, 2, 1, 3]))(x_cat_conv_split_h)
+	x_cat_conv_split_h = Conv2D(channel, kernel_size=1, strides=1, use_bias=False, name = "ca_block_conv2_"+str(name))(x_cat_conv_split_h)
+	x_cat_conv_split_h = Activation('sigmoid')(x_cat_conv_split_h)
+ 
+	x_cat_conv_split_w = Conv2D(channel, kernel_size=1, strides=1, use_bias=False, name = "ca_block_conv3_"+str(name))(x_cat_conv_split_w)
+	x_cat_conv_split_w = Activation('sigmoid')(x_cat_conv_split_w)
+ 
+	output = multiply([input_feature, x_cat_conv_split_h])
+	output = multiply([output, x_cat_conv_split_w])
 	return output

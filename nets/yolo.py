@@ -3,12 +3,12 @@ from keras.layers import Concatenate, Input, Lambda, UpSampling2D
 from keras.models import Model
 from utils.utils import compose
 
-from nets.attention import cbam_block, eca_block, se_block
+from nets.attention import cbam_block, eca_block, se_block, ca_block
 from nets.CSPdarknet53_tiny import (DarknetConv2D, DarknetConv2D_BN_Leaky,
                                     darknet_body)
 from nets.yolo_training import yolo_loss
 
-attention = [se_block, cbam_block, eca_block]
+attention = [se_block, cbam_block, eca_block, ca_block]
 
 #---------------------------------------------------#
 #   特征层->最后的输出
@@ -21,7 +21,7 @@ def yolo_body(input_shape, anchors_mask, num_classes, phi = 0):
     #   feat2的shape为13,13,512
     #---------------------------------------------------#
     feat1, feat2 = darknet_body(inputs)
-    if phi >= 1 and phi <= 3:
+    if phi >= 1 and phi <= 4:
         feat1 = attention[phi - 1](feat1, name='feat1')
         feat2 = attention[phi - 1](feat2, name='feat2')
 
@@ -33,7 +33,7 @@ def yolo_body(input_shape, anchors_mask, num_classes, phi = 0):
     
     # 13,13,256 -> 13,13,128 -> 26,26,128
     P5_upsample = compose(DarknetConv2D_BN_Leaky(128, (1,1)), UpSampling2D(2))(P5)
-    if phi >= 1 and phi <= 3:
+    if phi >= 1 and phi <= 4:
         P5_upsample = attention[phi - 1](P5_upsample, name='P5_upsample')
 
     # 26,26,256 + 26,26,128 -> 26,26,384
