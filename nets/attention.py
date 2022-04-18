@@ -3,7 +3,7 @@ import math
 import tensorflow as tf
 from keras import backend as K
 from keras.layers import (Activation, Add, Concatenate, Conv1D, Conv2D, Dense,
-                          GlobalAveragePooling2D, GlobalMaxPooling2D, Lambda,
+                          GlobalAveragePooling2D, GlobalMaxPooling2D, Lambda, BatchNormalization,
                           Reshape, multiply)
 
 
@@ -113,6 +113,7 @@ def ca_block(input_feature, ratio=16, name=""):
 	
 	x_cat_conv_relu = Concatenate(axis=2)([x_w, x_h])
 	x_cat_conv_relu = Conv2D(channel // ratio, kernel_size=1, strides=1, use_bias=False, name = "ca_block_conv1_"+str(name))(x_cat_conv_relu)
+	x_cat_conv_relu = BatchNormalization(name = "ca_block_bn_"+str(name))(x_cat_conv_relu)
 	x_cat_conv_relu = Activation('relu')(x_cat_conv_relu)
  
 	x_cat_conv_split_h, x_cat_conv_split_w = Lambda(lambda x: tf.split(x, num_or_size_splits=[h, w], axis=2))(x_cat_conv_relu)
